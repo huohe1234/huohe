@@ -3965,6 +3965,21 @@
                             <span>如何导入导出</span>
                             <i class="fas fa-chevron-right"></i>
                         </div>
+                        <div class="setting-item" id="tutorial-emoji">
+                            <i class="fas fa-smile-wink"></i>
+                            <span>如何新增/删除表情包</span>
+                            <i class="fas fa-chevron-right"></i>
+                        </div>
+                        <div class="setting-item" id="tutorial-persona">
+                            <i class="fas fa-user-tag"></i>
+                            <span>玩家人设及绑定</span>
+                            <i class="fas fa-chevron-right"></i>
+                        </div>
+                        <div class="setting-item" id="tutorial-narrator">
+                            <i class="fas fa-theater-masks"></i>
+                            <span>旁白如何使用</span>
+                            <i class="fas fa-chevron-right"></i>
+                        </div>
                         <div class="setting-item" id="tutorial-moments">
                             <i class="fas fa-camera-retro"></i>
                             <span>朋友圈如何使用</span>
@@ -3973,11 +3988,6 @@
                         <div class="setting-item" id="tutorial-theme">
                             <i class="fas fa-palette"></i>
                             <span>如何设置主题</span>
-                            <i class="fas fa-chevron-right"></i>
-                        </div>
-                        <div class="setting-item" id="tutorial-support-group">
-                            <i class="fas fa-headset"></i>
-                            <span>联系售后群</span>
                             <i class="fas fa-chevron-right"></i>
                         </div>
                     </div>
@@ -9041,11 +9051,9 @@ async handleAutoSummaryRequest(chatId) {
             },
             async getGiftApiResponse(prompt, signal) {
                 let giftApiConfig = await DBHelper.get('giftApiConfig', 'mainConfig');
+                
                 if (!giftApiConfig || !giftApiConfig.key) {
-                    giftApiConfig = await DBHelper.get('apiConfig', 'mainConfig'); // Fallback to main config
-                }
-                if (!giftApiConfig || !giftApiConfig.key) {
-                    throw new Error('礼物搜索API未配置，请先在礼物页面右上角设置。');
+                    throw new Error('礼物搜索API未配置，请先在礼物页面右上角设置。设置前阅读帮助内容，你也可以点击“使用主API配置”按钮来快速配置。\n如果不想配置API，可以选择自定义按钮，自定义自己想要赠送的礼物');
                 }
                 
                 // Use a copy of the main getApiResponse logic, but with the specific giftApiConfig
@@ -9141,9 +9149,9 @@ async handleAutoSummaryRequest(chatId) {
                 } catch(e) { console.error("获取礼物绑定提示词失败", e); }
 
 
-                const prompt = `请你扮演一位专业的电商商品文案策划，为我推荐8个与关键词“${keyword}”相关的创意礼物。
+                const prompt = `请你扮演一位专业的电商商品文案策划，为我推荐8个与关键词“${keyword}”同类或相关的创意礼物。
 要求：
-1. 礼物名称要生动有趣，可以包含虚构的品牌名或系列名，例如：“星夜私语”系列香薰蜡烛，“森屿之息”手作木雕摆件。
+1. 礼物名称要生动有趣，可以包含虚构的品牌名或系列名。
 2. 礼物简介要精炼且有吸引力，20字以内，突出礼物的特点或寓意。
 3. 礼物图片必须是来自Unsplash, Pexels等免费图库的高质量URL。
 4. 严格以JSON数组格式返回，不要有任何多余的文字或代码块标记。
@@ -9557,6 +9565,41 @@ async handleAutoSummaryRequest(chatId) {
                                 <p><strong>提示：</strong>如果导入的角色名与现有角色冲突，系统会提示你选择“更新”或“覆盖”。</p>
                             `);
                             break;
+                        case 'tutorial-emoji':
+                            showTutorialModal('如何新增/删除表情包', `
+                                <p>你可以添加和管理自己的专属表情包。</p>
+                                <p>1. 在任意聊天界面，点击输入框下方的 <strong>收藏表情 <i class="fas fa-star"></i></strong> 按钮，打开收藏表情面板。</p>
+                                <p>2. 点击面板左上角的 <strong><i class="fas fa-plus"></i></strong> 按钮，可以<strong>新增</strong>自定义表情。你需要提供表情图片的URL链接和表情的文字描述（这个描述会告诉AI表情的含义）。</p>
+                                <p>3. 点击 <strong><i class="fas fa-minus"></i></strong> 按钮，可以<strong>删除</strong>你添加过的自定义表情。</p>
+                                <p><strong>提示：</strong>在普通表情包面板，你也可以点击每个表情右上角的星星 <i class="fas fa-star"></i> 来收藏或取消收藏内置表情。</p>
+                            `);
+                            break;
+                        case 'tutorial-persona':
+                            showTutorialModal('玩家人设及绑定', `
+                                <p>你可以创建多套“你”的人设，并在不同聊天中切换，让AI根据不同的人设与你互动。</p>
+                                <p><strong>1. 创建/管理预设：</strong></p>
+                                <p>  - 在 <strong>消息</strong> 页面，点击左上角你自己的头像，会滑出“我的信息”侧边栏。</p>
+                                <p>  - 在这里编辑你的姓名、性别、背景等信息，这就是你<strong>当前使用</strong>的人设。</p>
+                                <p>  - 点击下方的 <strong>读取/保存/删除</strong> 按钮，可以管理你的人设<strong>预设</strong>。你可以将当前的人设保存为一个新的预设，或读取一个已有的预设来替换当前人设。</p>
+                                <p><strong>2. 绑定人设：</strong></p>
+                                <p>  - <strong>绑定</strong>的作用是将某个特定的人设预设<strong>固定</strong>给一个聊天对象或场景。</p>
+                                <p>  - 你可以在以下地方进行绑定：</p>
+                                <p>    • <strong>私聊/群聊：</strong>聊天界面右上角菜单 > 绑定玩家人设。</p>
+                                <p>    • <strong>好友分组：</strong>通讯录 > 分组 > 对应分组右上角菜单 > 绑定玩家人设 (会对此分组下所有未单独绑定的好友生效)。</p>
+                                <p>    • <strong>朋友圈：</strong>发现 > 朋友圈 > 右上角菜单 > 修改当前圈子 > 绑定玩家人设。</p>
+                                <p><strong>重要：</strong>如果一个聊天对象没有绑定任何特定人设，AI将默认使用你在“我的信息”侧边栏中<strong>当前正在使用</strong>的人设与你对话。</p>
+                            `);
+                            break;
+                        case 'tutorial-narrator':
+                             showTutorialModal('旁白如何使用', `
+                                <p>“旁白”功能允许你设定一个“故事的讲述者”来描述场景、补充设定或推动剧情。</p>
+                                <p><strong>使用方法：</strong></p>
+                                <p>通讯录新增内置角色选择旁白，将旁白添加进入群聊内。或者自行创建一个旁白角色，固定它使用 <code>&lt;旁白&gt;...&lt;/旁白&gt;</code> 的格式来发送旁白消息。</p>
+                                <p>当然，你也可以自己输入旁白消息格式，来作为那个剧情的推动者。</p>
+                                <p><strong>示例：</strong></p>
+                                <p><code>&lt;旁白&gt;窗外下起了淅淅沥沥的小雨，房间里的气氛有些沉闷。&lt;/旁白&gt;</code></p>
+                            `);
+                            break;
                         case 'tutorial-moments':
                             showTutorialModal('朋友圈如何使用', `
                                 <p>朋友圈是一个模拟社交动态的趣味功能。</p>
@@ -9574,13 +9617,6 @@ async handleAutoSummaryRequest(chatId) {
                                 <p>2. 在这里，你可以更改<strong>弹窗风格</strong>、<strong>聊天气泡样式</strong>、<strong>字体大小</strong>和<strong>颜色</strong>。</p>
                                 <p>3. 点击 <strong>通用设置 > 背景与封面</strong>，可以上传你喜欢的图片作为全局页面背景、全局聊天背景，好友/群聊聊天界面右上角可设置专属聊天背景。支持自定义红包和转账的封面图。</p>
                                 <p>4. <strong>字体设置</strong>你可以加载可免费使用的或已购买的本地字体文件/网络字体资源</p>
-                            `);
-                            break;
-                        case 'tutorial-support-group':
-                            showTutorialModal('联系售后群', `
-                                <p>如遇到使用问题或有功能建议，欢迎加入售后群交流，也可以分享好吃的⌯>ᴗo⌯ .ᐟ.ᐟ。</p>
-                                <p>请在QQ搜索群号加入：</p>
-                                <p style="font-size: 1.5rem; font-weight: bold; text-align: center; margin: 20px 0; user-select: all; cursor: pointer;">613107620</p>
                             `);
                             break;
                     }
@@ -9848,16 +9884,28 @@ async handleAutoSummaryRequest(chatId) {
                 };
                 this.resetQuoteState();
             } else {
-                
-                message = {
-                    messageId: Utils.generateId('msg'),
-                    content,
-                    timestamp: now,
-                    type: 'sent',
-                    isRetracted: false,
-                    isUnread: false,
-                    segmentType: 'text',
-                };
+                const narratorRegex = /^<旁白>([\s\S]*)<\/旁白>$/;
+                const narratorMatch = content.match(narratorRegex);
+
+                if (narratorMatch) {
+                    message = {
+                        messageId: Utils.generateId('msg'),
+                        content: narratorMatch[1].trim(),
+                        timestamp: now,
+                        type: 'sent',
+                        segmentType: 'narrator',
+                    };
+                } else {
+                    message = {
+                        messageId: Utils.generateId('msg'),
+                        content,
+                        timestamp: now,
+                        type: 'sent',
+                        isRetracted: false,
+                        isUnread: false,
+                        segmentType: 'text',
+                    };
+                }
             }
             
             message.chatId = appState.currentChatId;
@@ -15669,11 +15717,11 @@ handleImmediateSummary(entityId, isGroup) {
                 UIManager.showModal({
                     title: "礼物搜索帮助",
                     body: `
-                        <p>礼物搜索功能通过AI生成，因此在使用前需要正确配置API。</p>
-                        <p><strong>1. API配置：</strong> 点击页面上的“API配置”按钮，填入你的API信息。由于礼物搜索功能相对简单，你可以选择一些免费额度或价格较低的模型，以节省成本。</p>
+                        <p>礼物搜索功能通过AI生成，因此在使用前需要正确配置API，此功能仅供娱乐搜索。除了AI搜索，你还可以选择<strong>自定义</strong>手动填入自己想要赠送的礼物</p>
+                        <p><strong>1. API配置：</strong> 点击页面上的“API配置”按钮，填入你的API信息。由于礼物搜索功能相对简单，你可以选择一些免费或价格较低的模型。</p>
                         <p><strong>2. 推荐模型：</strong></p>
                         <ul>
-                            <li><strong>SiliconFlow (硅基流动):</strong> <code>deepseek-ai/DeepSeek-R1-0528-Qwen3-8B</code> (性价比高)</li>
+                            <li><strong>SiliconFlow (硅基流动):</strong> <code>deepseek-ai/DeepSeek-R1-0528-Qwen3-8B</code>(在硅基流动官网上,该模型目前是免费模型,但使用时依然需要填写正确的API key)</li>
                         </ul>
                         <p><strong>3. 绑定提示词：</strong> 你还可以通过“绑定”功能，选择一个或多个自定义提示词文件夹。这些提示词将在每次搜索时附加，用于影响AI生成礼物的风格和类型，实现更个性化的搜索结果。</p>
                     `,
