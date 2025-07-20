@@ -11533,6 +11533,7 @@ if (entity && entity.autoSummaryEnabled && chatMetadata.totalPlayerTurns > 0 && 
                             const oldGroup = existingGroups.find(g => g.name === importedGroup.name);
                             if (oldGroup) {
                                 await DBHelper.deleteMessagesForChat(oldGroup.id); // <-- 这是关键的修复
+                                await DBHelper.deleteMessagesForChat(oldGroup.id); // <-- 这是关键的修复
                                 await DBHelper.delete('chats', oldGroup.id);
                                 await DBHelper.delete('chatMetadata', oldGroup.id);
                                 await DBHelper.delete('groups', oldGroup.id);
@@ -11722,8 +11723,11 @@ if (entity && entity.autoSummaryEnabled && chatMetadata.totalPlayerTurns > 0 && 
                             }
 
                             if (includeHistory) {
-                                const chatHistory = await DBHelper.get('chats', chatId);
-                                if (chatHistory && chatHistory.history) {
+                                // -- BUGFIX: 从正确的 'messages' 表获取所有聊天记录，而不是从旧的 'chats' 表。
+                                const allMessagesForChat = await DBHelper.getMessages(chatId, Number.MAX_SAFE_INTEGER);
+                                const chatHistory = { history: allMessagesForChat };
+
+                                if (chatHistory && chatHistory.history && chatHistory.history.length > 0) {
                                     const participants = {};
                                     const myProfile = await DBHelper.get('profile', 'myProfile');
                                     const allContacts = await DBHelper.getAll('contacts');
