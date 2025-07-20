@@ -7099,8 +7099,10 @@ ${promptLines.join('\n')}
                     }
                 }
                 
-                const turnFrequency = chatSettings.promptTurnFrequency > 0 ? chatSettings.promptTurnFrequency : 1;
-                const shouldSendFullPrompt = (chatMetadata.turnCountSinceLastPrompt || 0) >= turnFrequency;
+                const turnFrequency = chatSettings.promptTurnFrequency;
+                // 如果频率设置为1或0（我们视作“每一次”），则总是发送完整prompt。
+                // 否则，才根据玩家的回合计数器来判断。
+                const shouldSendFullPrompt = turnFrequency <= 1 ? true : (chatMetadata.turnCountSinceLastPrompt || 0) >= turnFrequency;
                 
                 // 内部辅助函数，现在可以限制回合数
                 const buildHistoryBlock = async (targetChatId, title, charLimit, turnLimit = null) => {
@@ -7168,33 +7170,8 @@ ${promptLines.join('\n')}
 ---`;
                 }
 
-                let historyPrompt = "以下是聊天记录，请结合上下文进行回复（每行是一个JSON对象，代表一个回合）：\n";
-                const historyCharLimit = chatSettings.historyCharLimit || 5000;
-
-                // --- 核心修改：记忆互通逻辑 ---
-                if (chatSettings.memoryInterconnection) {
-                    if (isGroup) {
-                        const members = chatEntity.members.map(id => allContacts.find(c => c.id === id)).filter(Boolean);
-                        let privateContext = '--- 以下是各角色的私聊记忆 (仅角色自己可见, 最多10回合) ---\n';
-                        for (const member of members) {
-                            privateContext += await buildHistoryBlock(member.id, `与 ${member.name} 的私聊记录`, 2000, 10); // 限制10个回合
-                        }
-                        historyPrompt += privateContext;
-                        historyPrompt += await buildHistoryBlock(chatId, '当前群聊记录', historyCharLimit);
-                    } else { // 私聊
-                        const relatedGroups = allGroups.filter(g => g.members.includes(chatEntity.id));
-                        let groupContext = '--- 以下是相关的群聊记忆 (最多8回合) ---\n';
-                        for (const group of relatedGroups) {
-                            groupContext += await buildHistoryBlock(group.id, `群聊“${group.name}”的记录`, 1500, 8); // 限制8个回合
-                        }
-                        historyPrompt += groupContext;
-                        historyPrompt += await buildHistoryBlock(chatId, '当前私聊记录', historyCharLimit);
-                    }
-                } else { // 记忆互通关闭
-                    historyPrompt += await buildHistoryBlock(chatId, '当前聊天记录', historyCharLimit);
-                }
-                // --- 核心修改结束 ---
-
+                // --- 修复开始 ---
+                // 1. 先构建自定义提示词部分
                 let customPromptsSection = '';
                 if (shouldSendFullPrompt && chatEntity && chatEntity.boundPromptFolderIds?.length > 0) {
                     const allFolders = await DBHelper.getAll('promptFolders');
@@ -7214,6 +7191,33 @@ ${promptLines.join('\n')}
                     }
                 }
 
+                // 2. 然后构建历史记录部分
+                let historyPrompt = "以下是聊天记录，请结合上下文进行回复（每行是一个JSON对象，代表一个回合）：\n";
+                const historyCharLimit = chatSettings.historyCharLimit || 5000;
+
+                if (chatSettings.memoryInterconnection) {
+                    if (isGroup) {
+                        const members = chatEntity.members.map(id => allContacts.find(c => c.id === id)).filter(Boolean);
+                        let privateContext = '--- 以下是各角色的私聊记忆 (仅角色自己可见, 最多10回合) ---\n';
+                        for (const member of members) {
+                            privateContext += await buildHistoryBlock(member.id, `与 ${member.name} 的私聊记录`, 2000, 10);
+                        }
+                        historyPrompt += privateContext;
+                        historyPrompt += await buildHistoryBlock(chatId, '当前群聊记录', historyCharLimit);
+                    } else { // 私聊
+                        const relatedGroups = allGroups.filter(g => g.members.includes(chatEntity.id));
+                        let groupContext = '--- 以下是相关的群聊记忆 (最多8回合) ---\n';
+                        for (const group of relatedGroups) {
+                            groupContext += await buildHistoryBlock(group.id, `群聊“${group.name}”的记录`, 1500, 8);
+                        }
+                        historyPrompt += groupContext;
+                        historyPrompt += await buildHistoryBlock(chatId, '当前私聊记录', historyCharLimit);
+                    }
+                } else { // 记忆互通关闭
+                    historyPrompt += await buildHistoryBlock(chatId, '当前聊天记录', historyCharLimit);
+                }
+
+                // 3. 构建其他部分
                 const emojiListString = Object.entries(appState.aiEmojiMap).map(([id, desc]) => `${id}：${desc}`).join('\n');
                 const formatPrompt = AIHandler.formatPromptTpl.replace('{EMOJI_LIST}', emojiListString).replace('{PLAYER_NAME}', myProfile.name);
                 let summaryPromptSection = '';
@@ -7221,16 +7225,29 @@ ${promptLines.join('\n')}
                     summaryPromptSection = `--- 会话概要---\n${chatEntity.autoSummary}\n---`;
                 }
 
-                const promptParts = [systemTime, taskPrompt, characterInfoPrompt, playerInfoPrompt, pendingTransfersPrompt, pomodoroPromptSection, summaryPromptSection];
+                // 4. 最后组装所有部分
+                const promptParts = [
+                    systemTime, 
+                    taskPrompt, 
+                    characterInfoPrompt, 
+                    playerInfoPrompt, 
+                    pendingTransfersPrompt, 
+                    pomodoroPromptSection, 
+                    summaryPromptSection, 
+                    customPromptsSection, // 现在这里包含了正确的内容
+                    historyPrompt, 
+                    extraEmojiHintPrompt, 
+                    formatPrompt
+                ];
+
                 if (shouldSendFullPrompt) {
-                    promptParts.push(customPromptsSection);
                     chatMetadata.turnCountSinceLastPrompt = 0;
                     await DBHelper.put('chatMetadata', chatMetadata);
                 }
                 
-                promptParts.push(historyPrompt, extraEmojiHintPrompt, formatPrompt);
                 let finalPrompt = promptParts.filter(Boolean).join('\n\n');
                 if (isGroup) finalPrompt += AIHandler.groupChatRules;
+                // --- 修复结束 ---
                 
                 console.log(`--- PROMPT SENT TO AI (Full: ${shouldSendFullPrompt}) ---\n`, finalPrompt);
                 return finalPrompt;
@@ -8358,6 +8375,33 @@ async handleAutoSummaryRequest(chatId) {
                 }
             },
             
+            async _getBoundPromptsForMoments(circle, playerInputText = '') {
+                if (!circle || !circle.boundPromptFolderIds || circle.boundPromptFolderIds.length === 0) {
+                    return '';
+                }
+
+                const allFolders = await DBHelper.getAll('promptFolders');
+                const allPrompts = await DBHelper.getAll('prompts');
+
+                const activeBoundFolders = allFolders.filter(f => circle.boundPromptFolderIds.includes(f.id) && f.isActive);
+                if (activeBoundFolders.length === 0) return '';
+                
+                const activeBoundFolderIds = activeBoundFolders.map(f => f.id);
+                const relevantPrompts = allPrompts.filter(p => activeBoundFolderIds.includes(p.folderId) && p.isActive);
+
+                const promptsToInject = relevantPrompts
+                    .filter(p => 
+                        p.type === 'explicit' || 
+                        (p.type === 'implicit' && playerInputText && JSON.parse(p.keywords).some(kw => playerInputText.includes(kw)))
+                    )
+                    .map(p => p.content);
+
+                if (promptsToInject.length > 0) {
+                    return `\n--- 附加风格要求 (来自绑定的提示词) ---\n${promptsToInject.join('\n\n')}\n---`;
+                }
+                return '';
+            },
+            
             async handleMomentsCommentRequest(momentId) {
                  if (this.isAwaitingResponse) return;
 
@@ -8511,12 +8555,15 @@ async handleAutoSummaryRequest(chatId) {
 ---
 `;
                 
+                const customPromptsSection = await this._getBoundPromptsForMoments(circle);
+
                 const finalPrompt = [
                     timePrompt,
                     playerInfo,
                     `--- 圈子里的AI角色 ---\n${membersInfo}`,
                     extraMembersInfo,
                     `--- 最近的聊天记录参考 ---\n${contextHistory}`,
+                    customPromptsSection,
                     formatRules
                 ].join('\n\n');
                 
@@ -8602,11 +8649,14 @@ async handleAutoSummaryRequest(chatId) {
 `;
                 const playerInfo = `--- 发布动态的玩家资料 ---\n玩家名: ${myProfile.name}\n性别: ${myProfile.gender}\n背景: ${myProfile.background || '无'}`;
 
+                const customPromptsSection = await this._getBoundPromptsForMoments(circle, moment.content);
+
                 const finalPrompt = [
                     postContentText,
                     playerInfo, // 新增：将玩家人设信息加入Prompt
                     `--- 参与评论的角色资料参考 ---\n${membersInfo}`,
                     `--- 最近的聊天记录参考 ---\n${contextHistory}`,
+                    customPromptsSection,
                     privateChatRules,
                     formatRules
                 ].join('\n\n');
@@ -8681,11 +8731,14 @@ async handleAutoSummaryRequest(chatId) {
                 
                 const playerInfo = `--- 评论的玩家资料 ---\n玩家名: ${myProfile.name}\n性别: ${myProfile.gender}\n背景: ${myProfile.background || '无'}`;
 
+                const customPromptsSection = await this._getBoundPromptsForMoments(circle, playerComment.content);
+
                 const finalPrompt = [
                     `--- 动态与历史评论 ---\n${postAndCommentsHistory}`,
                     `--- 玩家最新动作 ---\n${playerActionText}`,
                     playerInfo, // 新增：将玩家人设信息加入Prompt
                     `--- 其他角色资料参考 ---\n${membersInfo}`,
+                    customPromptsSection,
                     privateChatRules,
                     formatRules
                 ].join('\n\n');
