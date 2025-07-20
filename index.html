@@ -10732,26 +10732,26 @@ if (entity && entity.autoSummaryEnabled && chatMetadata.totalPlayerTurns > 0 && 
                         presetId: isNew ? Utils.generateId('persona') : presetIdToOverwrite
                     };
 
-                    const profileToUpdate = await DBHelper.get('profile', 'myProfile');
-                    profileToUpdate.presets = (profileToUpdate.presets || []).filter(p => p);
+                    // 直接使用已经获取到的 profile 对象，避免重复读取
+                    profile.presets = (profile.presets || []).filter(p => p);
 
                     if (isNew) {
-                        if (profileToUpdate.presets.length >= 20) {
+                        if (profile.presets.length >= 20) {
                             UIManager.showToast("预设已达到20个上限");
                             return;
                         }
-                        profileToUpdate.presets.push(newPreset);
+                        profile.presets.push(newPreset);
                     } else {
-                        const indexToUpdate = profileToUpdate.presets.findIndex(p => p.presetId === presetIdToOverwrite);
+                        const indexToUpdate = profile.presets.findIndex(p => p.presetId === presetIdToOverwrite);
                         if (indexToUpdate !== -1) {
-                            profileToUpdate.presets[indexToUpdate] = newPreset;
+                            profile.presets[indexToUpdate] = newPreset;
                         } else {
-                            // Fallback in case something went wrong, add as new.
-                            profileToUpdate.presets.push(newPreset);
+                            // 如果找不到要覆盖的，就当作新的添加
+                            profile.presets.push(newPreset);
                         }
                     }
 
-                    await DBHelper.put('profile', profileToUpdate);
+                    await DBHelper.put('profile', profile); // 保存更新后的整个 profile 对象
                     UIManager.hideModal();
                     UIManager.showToast(`预设 "${presetName}" 已保存`);
                 };
@@ -10783,8 +10783,8 @@ if (entity && entity.autoSummaryEnabled && chatMetadata.totalPlayerTurns > 0 && 
                 const profile = await DBHelper.get('profile', 'myProfile');
                 const presets = (profile.presets || []).filter(p => p);
 
-                if (presets.length <= 1) {
-                    UIManager.showToast("必须保留至少一个预设");
+                if (presets.length === 0) {
+                    UIManager.showToast("没有可删除的预设");
                     return;
                 }
                 
@@ -12963,7 +12963,12 @@ if (entity && entity.autoSummaryEnabled && chatMetadata.totalPlayerTurns > 0 && 
                     }
                 };
                 
-                $('#api-provider').addEventListener('change', updateApiFields);
+                $('#api-provider').addEventListener('change', () => {
+                    if ($('#api-provider').value === 'custom') {
+                        $('#api-url').value = '';
+                    }
+                    updateApiFields();
+                });
                 updateApiFields(); 
             },
             
