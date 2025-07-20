@@ -7507,7 +7507,7 @@ if (shouldSendFullPrompt) {
                 const allGroups = await DBHelper.getAll('groups');
                 const isGroup = chatId.startsWith('group-');
                 const chatEntity = await DBHelper.get(isGroup ? 'groups' : 'contacts', chatId);
-                const chatData = await DBHelper.get('chats', chatId) || { chatId, history: [], lastAiReplyTimestamp: 0 };
+                const fullHistory = await DBHelper.getMessages(chatId, 100); // 修复：从正确的 'messages' 表获取历史记录
                 const chatSettings = await DBHelper.get('apiConfig', 'chatSettings') || {};
                 const historyLength = 10; // 定义历史记录的轮数
 
@@ -7527,6 +7527,7 @@ if (shouldSendFullPrompt) {
                 }
 
                 const formatMessageContent = (msg, senderName, myName) => { 
+                    const recipientName = msg.cardData?.recipientName || '对方'; // 修复：定义 recipientName
                     if (msg.isRetracted) return `{${(msg.type === 'sent') ? myName : senderName}|${msg.content}}`;
                     if (msg.segmentType === 'inner_voice') return `【心声|${senderName}|${msg.content}】`;
                     switch (msg.segmentType) {
@@ -7565,12 +7566,11 @@ if (shouldSendFullPrompt) {
                     return `--- ${title} ---\n${finalTurns.map(turn => JSON.stringify(turn)).join('\n')}\n`;
                 };
                 
-                const fullHistory = await DBHelper.getMessages(chatId, 100); // 获取最多100条消息作为上下文
                 let historyPrompt = "作为参考，以下是你们之前的聊天记录：\n";
 
                 if (chatSettings.memoryInterconnection) {
                      if (isGroup) {
-                        historyPrompt += buildHistoryBlock(fullHistory, '当前群聊记录', historyLength);
+                        historyPrompt += buildHistoryBlock(fullHistory, '当前群聊记录', historyLength); // 修复：使用 fullHistory
                         let privateContext = '--- 以下是各角色的私聊记忆 (仅角色自己可见) ---\n';
                         for (const member of chatEntity.members.map(id => allContacts.find(c => c.id === id)).filter(Boolean)) {
                             const privateChatHistory = await DBHelper.getMessages(member.id, 20);
@@ -7578,7 +7578,7 @@ if (shouldSendFullPrompt) {
                         }
                         historyPrompt += privateContext;
                     } else {
-                        historyPrompt += buildHistoryBlock(fullHistory, '当前私聊记录', historyLength);
+                        historyPrompt += buildHistoryBlock(fullHistory, '当前私聊记录', historyLength); // 修复：使用 fullHistory
                         const relatedGroups = allGroups.filter(g => g.members.includes(chatEntity.id));
                         let groupContext = '--- 以下是相关的群聊记忆 ---\n';
                         for (const group of relatedGroups) {
@@ -7588,7 +7588,7 @@ if (shouldSendFullPrompt) {
                         historyPrompt += groupContext;
                     }
                 } else {
-                    historyPrompt += buildHistoryBlock(fullHistory, '当前聊天记录', historyLength);
+                    historyPrompt += buildHistoryBlock(fullHistory, '当前聊天记录', historyLength); // 修复：使用 fullHistory
                 }
 
                 const taskPrompt = isGroup ? 
