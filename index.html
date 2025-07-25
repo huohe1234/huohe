@@ -6993,6 +6993,7 @@ async showAutoSummaryModal(entityId, isGroup) {
                         currentTurn = {
                             role: role,
                             time: Utils.formatTimestampForPrompt(msg.timestamp),
+                            rawTimestamp: msg.timestamp, 
                             content: formattedContent
                         };
                     }
@@ -11655,6 +11656,27 @@ if (entity && entity.autoSummaryEnabled && chatMetadata.totalPlayerTurns > 0 && 
                 return chatHistory;
             },
 
+            async calculateAndDisplayChatStats(chatId, elementId) {
+                const displayElement = $(`#${elementId}`);
+                if (!displayElement) return;
+
+                try {
+                    const allMessages = await DBHelper.getMessages(chatId, Number.MAX_SAFE_INTEGER);
+                    const allContacts = await DBHelper.getAll('contacts');
+                    const myProfile = await this.getPlayerProfileForContext(chatId);
+                    
+                    const turns = AIHandler.buildTurnsFromHistory(allMessages, allContacts, myProfile);
+                    
+                    const messageCount = allMessages.length;
+                    const turnCount = turns.length;
+                    
+                    displayElement.textContent = `(${messageCount}条 / ${turnCount}轮)`;
+                } catch (error) {
+                    console.error("Failed to calculate chat stats:", error);
+                    displayElement.textContent = `(计算失败)`;
+                }
+            },
+
             async handleExportContact(contactId) {
                 const contact = await DBHelper.get('contacts', contactId);
                 const allOpeningScenes = await DBHelper.getAll('openingScenes');
@@ -11679,6 +11701,7 @@ if (entity && entity.autoSummaryEnabled && chatMetadata.totalPlayerTurns > 0 && 
             showExportModal(entity, isGroup) {
                 const myProfile = { name: '你' };
                 const targetEntity = isGroup ? entity.groupData : entity;
+                const chatId = targetEntity.id;
 
                 const authorName = targetEntity.author || myProfile.name;
                 const authorWords = targetEntity.authorWords || '';
@@ -11695,9 +11718,19 @@ if (entity && entity.autoSummaryEnabled && chatMetadata.totalPlayerTurns > 0 && 
                             <label for="export-author-words">作者有话说 (选填)</label>
                             <textarea id="export-author-words" rows="3">${authorWords}</textarea>
                         </div>
-                        <div class="form-group" style="display: flex; align-items: center; justify-content: center; padding-top: 10px;">
-                            <input type="checkbox" id="export-chat-history-checkbox" style="width: 16px; height: 16px; margin-right: 8px;">
-                            <label for="export-chat-history-checkbox" style="margin: 0; cursor: pointer;">同时导出聊天记录</label>
+                        <div class="form-group">
+                            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
+                                <label for="export-chat-history-checkbox" style="display: flex; align-items: center; cursor: pointer; margin: 0;">
+                                    <input type="checkbox" id="export-chat-history-checkbox" style="width: 16px; height: 16px; margin-right: 8px;">
+                                    同时导出聊天记录
+                                </label>
+                                <span id="export-stats-display" style="font-weight: normal; color: var(--text-color-medium); font-size: 0.9em;"><i class="fas fa-spinner fa-spin"></i> 正在计算...</span>
+                            </div>
+                            <div id="history-options-container" style="display: none; padding: 10px; background: rgba(0,0,0,0.03); border-radius: 8px; flex-direction: column; gap: 12px;">
+                                <label style="display: flex; align-items: center; cursor: pointer;"><input type="radio" name="export-history-option" value="recent50" style="width: 16px; height: 16px; margin-right: 8px;">最近50轮聊天会话</label>
+                                <label style="display: flex; align-items: center; cursor: pointer;"><input type="radio" name="export-history-option" value="recent100" style="width: 16px; height: 16px; margin-right: 8px;">最近100轮聊天会话</label>
+                                <label style="display: flex; align-items: center; cursor: pointer;"><input type="radio" name="export-history-option" value="all" style="width: 16px; height: 16px; margin-right: 8px;">所有聊天记录 (可能卡顿)</label>
+                            </div>
                         </div>
                     `,
                     actions: [
@@ -11705,45 +11738,57 @@ if (entity && entity.autoSummaryEnabled && chatMetadata.totalPlayerTurns > 0 && 
                         { text: '生成文件', class: 'btn-primary', handler: async () => {
                             const newAuthorName = $('#export-author-name').value.trim();
                             const newAuthorWords = $('#export-author-words').value.trim();
-                            const includeHistory = $('#export-chat-history-checkbox').checked;
+                            
+                            const exportOption = $('#export-chat-history-checkbox').checked
+                                ? $('input[name="export-history-option"]:checked').value
+                                : 'none';
 
                             let exportData;
-                            let chatId;
-
                             if (isGroup) {
                                 entity.groupData.author = newAuthorName;
                                 entity.groupData.authorWords = newAuthorWords;
                                 exportData = { type: 'group', ...entity };
-                                chatId = entity.groupData.id;
                             } else {
                                 entity.author = newAuthorName;
                                 entity.authorWords = newAuthorWords;
                                 exportData = { type: 'contact', contactData: entity };
-                                chatId = entity.id;
                             }
 
-                            if (includeHistory) {
-                                // -- BUGFIX: 从正确的 'messages' 表获取所有聊天记录，而不是从旧的 'chats' 表。
-                                const allMessagesForChat = await DBHelper.getMessages(chatId, Number.MAX_SAFE_INTEGER);
-                                const chatHistory = { history: allMessagesForChat };
+                            if (exportOption !== 'none') {
+                                const allMessages = await DBHelper.getMessages(chatId, Number.MAX_SAFE_INTEGER);
+                                let messagesToExport = [];
 
-                                if (chatHistory && chatHistory.history && chatHistory.history.length > 0) {
+                                if (exportOption === 'all') {
+                                    messagesToExport = allMessages;
+                                } else {
+                                    const limit = exportOption === 'recent50' ? 50 : 100;
+                                    const allContacts = await DBHelper.getAll('contacts');
+                                    const profile = await this.getPlayerProfileForContext(chatId);
+                                    const allTurns = AIHandler.buildTurnsFromHistory(allMessages, allContacts, profile);
+                                    
+                                    if (allTurns.length > 0) {
+                                        const turnsToExport = allTurns.slice(-limit);
+                                        if (turnsToExport.length > 0) {
+                                            const startTimestamp = turnsToExport[0].rawTimestamp;
+                                            messagesToExport = allMessages.filter(m => m.timestamp >= startTimestamp);
+                                        }
+                                    }
+                                }
+
+                                if (messagesToExport.length > 0) {
+                                    const chatHistory = { history: messagesToExport };
                                     const participants = {};
-                                    const myProfile = await DBHelper.get('profile', 'myProfile');
+                                    const profile = await DBHelper.get('profile', 'myProfile');
                                     const allContacts = await DBHelper.getAll('contacts');
                                     
-                                    participants[myProfile.id] = myProfile;
-
+                                    participants[profile.id] = profile;
                                     for (const msg of chatHistory.history) {
                                         if (msg.senderId && !participants[msg.senderId]) {
                                             const senderInfo = allContacts.find(c => c.id === msg.senderId);
-                                            if (senderInfo) {
-                                                participants[msg.senderId] = senderInfo;
-                                            }
+                                            if (senderInfo) participants[msg.senderId] = senderInfo;
                                         }
-                                        delete msg.senderInfo; 
+                                        delete msg.senderInfo;
                                     }
-                                    
                                     exportData.chatHistory = chatHistory;
                                     exportData.participants = Object.values(participants);
                                 }
@@ -11775,6 +11820,23 @@ if (entity && entity.autoSummaryEnabled && chatMetadata.totalPlayerTurns > 0 && 
                         }}
                     ]
                 });
+                
+                const historyCheckbox = $('#export-chat-history-checkbox');
+                const optionsContainer = $('#history-options-container');
+                historyCheckbox.onchange = (e) => {
+                    if (e.target.checked) {
+                        optionsContainer.style.display = 'flex';
+                        // 当显示选项时，默认选中 "100轮"
+                        const defaultOption = $('input[name="export-history-option"][value="recent100"]');
+                        if (defaultOption) {
+                            defaultOption.checked = true;
+                        }
+                    } else {
+                        optionsContainer.style.display = 'none';
+                    }
+                };
+                
+                this.calculateAndDisplayChatStats(chatId, 'export-stats-display');
             },
 
             handleResetApp() {
